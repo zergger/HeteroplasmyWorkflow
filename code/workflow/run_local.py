@@ -27,14 +27,21 @@ if len(sys.argv) != 3:
     print('Usage: python', sys.argv[0], 'config_file.txt','read_file.txt')
     sys.exit(0)
 
+# print(os.getcwd())
+SCRIPT_DIR = os.path.dirname(os.path.realpath(sys.argv[0]))+'/'
+# print(SCRIPT_DIR)
+# exit()
 #--------------------------------------------------------------
 # read defaults file
 #--------------------------------------------------------------
 config = ConfigParser()
-config.readfp(open('defaults.ini'))
+# config.readfp(open(SCRIPT_DIR+'defaults.ini'))
+config.read_file(open(SCRIPT_DIR+'defaults.ini'))
 default_dist = config.get('defaults', 'DIST')
 default_score_threshold = config.get('defaults', 'score_threshold')
 default_percentage_threshold = config.get('defaults', 'percentage_threshold')
+default_count_threshold = config.get('defaults', 'count_threshold')
+default_d_threshold = config.get('defaults', 'd_threshold')
 default_alignment_quality = config.get('defaults', 'alignment_quality')
 default_chloroplast = config.get('defaults', 'chloroplast')
 default_mitochondria = config.get('defaults', 'mitochondria')
@@ -42,7 +49,7 @@ default_mitochondria = config.get('defaults', 'mitochondria')
 #--------------------------------------------------------------
 # read version
 #--------------------------------------------------------------
-with open('VERSION', 'r') as f:
+with open(SCRIPT_DIR+'VERSION', 'r') as f:
     line = f.readline()
     version = line.strip()
 
@@ -52,14 +59,21 @@ output_day = str(datetime.now()).split(" ")[0].replace(",","")
 # make info for output filename
 output_info = "_v"+version + "_" + output_day
 
+# print("here")
+# print(version)
+# print(default_dist)
+# exit()
+
 #--------------------------------------------------------------
 # read config file
 #--------------------------------------------------------------
-config.readfp(open(sys.argv[1]))
+# config.readfp(open(sys.argv[1]))
+config.read_file(open(sys.argv[1]))
 ref = config.get('config', 'REF')
 READS_DIR = config.get('config', 'READS_DIR')
 OUTPUT_DIR = config.get('config', 'OUTPUT_DIR')
 LOG_FILE = config.get('config', 'LOG_FILE')
+is_pair_read = config.get('config', 'PE')
 cutoff = config.get('config', 'cutoff')
 cp_ref = config.get('config', 'cp_ref')
 mt_ref = config.get('config', 'mt_ref')
@@ -102,20 +116,43 @@ try:
 except:
     percentage_threshold = default_percentage_threshold
 
-check_exist('ls', cp_ref)
-check_exist('ls', mt_ref)
-check_exist('ls', cp_annotation)
-check_exist('ls', mt_annotation)
+try:
+    count_threshold = config.get('config', 'count_threshold')
+except:
+    count_threshold = default_count_threshold
+
+try:
+    d_threshold = config.get('config', 'd_threshold')
+except:
+    d_threshold = default_d_threshold
+
+if chloroplast != 'None':
+    check_exist('ls', cp_ref)
+    check_exist('ls', cp_annotation)
+
+if mitochondria != 'None':
+    check_exist('ls', mt_ref)
+    check_exist('ls', mt_annotation)
+
+logf = open(LOG_FILE,'w')
+logf.write("icHET\n")
+logf.close()
 
 #--------------------------------------------------------------
 
 with open(sys.argv[2], 'r') as f:
-    reads = f.readlines()
+    for line in f:
+        if ',' in line:
+            read = line.strip().split(",")[0]
+        else:
+            read = line.strip()
+        reads.append(read)
+        # reads = f.readlines()
 
 n_reads = len(reads)
 
-SCRIPT_DIR = os.getcwd()
-print("HETEROPLASMY")
+# SCRIPT_DIR = os.getcwd()
+print("icHET: Exploratory Visualization of Cytoplasmic Heteroplasmy")
 
 output = 'None'
 ###########################################################
@@ -129,31 +166,28 @@ else:
         print("\nOutput exists! Please change the OUTPUT_DIR in config file and re-run the program.")
         exit()
     else:
-        ans = input("Remove all existing files in "+OUTPUT_DIR+"? (Y to remove, N to re-use these files)")
-        if ans in ['y','Y','Yes','yes']:
-            cmd = 'rm -rf '+OUTPUT_DIR
-            try:
-                output = subprocess.check_call(cmd, shell=True)
-            except:
-                no_error = False
-                log_error(cmd, output, sys.exc_info())
-            os.makedirs(OUTPUT_DIR)
-            print("\nOverwrite OUTPUT_DIR.")
-        if ans in ['n','N','No','no']:
-            print("The workflow will re-use the existing files in "+OUTPUT_DIR+".")
-
+        cmd = 'rm -rf '+OUTPUT_DIR
+        try:
+            output = subprocess.check_call(cmd, shell=True)
+        except:
+            no_error = False
+            log_error(cmd, output, sys.exc_info())
+        os.makedirs(OUTPUT_DIR)
+        print("\nOverwrite OUTPUT_DIR.\n")
+SAM_DIR = os.path.dirname(os.path.realpath(ref))+'/'
 start_time = time.time()
 ###########################################################
 # 01_bwa
 ###########################################################
-check_exist('which', 'bwa')
+check_exist('which', 'bwa-meme')
 check_exist('which', 'samtools')
+# import datetime
 
-if os.path.exists(ref + '.bwt'):
-    print('Index exists. Skip indexing by bwa.')
+if os.path.exists(ref + '.pac'):
+    print('\nIndex exists. Skip indexing by bwa-meme.')
 else:
-    print('Index', ref)
-    cmd = 'bwa index %s' % ref
+    print('\nIndex', ref)
+    cmd = 'bwa-meme index -a meme %s' % ref
     with open(LOG_FILE, 'a') as f:
         f.write('%s\n%s\n' % (str(datetime.now()), cmd))
 
@@ -164,30 +198,61 @@ else:
         log_error(cmd, output, sys.exc_info())
 
 index_time = time.time()
-print("Index time: ", index_time-start_time)
+print("Training time: ", index_time-start_time)
 
+start_time = time.time()
+if os.path.exists(ref + '.suffixarray_uint64_L0_PARAMETERS'):
+    print('\nTrained models exists. Skip models training by bwa-meme.')
+else:
+    print('\nTraining models', ref)
+    cmd = 'build_rmis_dna.sh %s' % ref
+    with open(LOG_FILE, 'a') as f:
+        f.write('%s\n%s\n' % (str(datetime.now()), cmd))
+
+    try:
+        output = subprocess.check_call(cmd, shell=True)
+    except:
+        no_error = False
+        log_error(cmd, output, sys.exc_info())
+
+train_time = time.time()
+print("Training time: ", train_time-start_time)
 
 ###########################################################
 # 02_alignment
 # 02_filter_by_samtools
 ###########################################################
 for line in reads:
-    read1 = os.path.join(READS_DIR, line.strip() + '_1.fastq')
-    read2 = os.path.join(READS_DIR, line.strip() + '_2.fastq')
-    check_exist('ls', read1)
-    check_exist('ls', read2)
+    if is_pair_read == 1:
+        read1 = os.path.join(READS_DIR, line.strip() + '_R1.fastq')
+        read2 = os.path.join(READS_DIR, line.strip() + '_R2.fastq')
+        check_exist('ls', read1)
+        check_exist('ls', read2)
+        name = read1.split('/')[-1].split('_R1')[0]
+    else:
+        read = os.path.join(READS_DIR, line.strip() + '.fastq')
+        check_exist('ls', read)
+        name = read.split('/')[-1].split('.')[0]
 
-    name = read1.split('/')[-1].split('_R1')[0]
-    out_sam = os.path.join(OUTPUT_DIR, name + '.sam')
-    out_filtered_sam = os.path.join(OUTPUT_DIR, name + '_f2_F0x900_q' + alignment_quality + '.sam')
+    # out_sam = os.path.join(OUTPUT_DIR, name+'.sam')
+    out_sam = os.path.join(SAM_DIR, name+'.sam')
+    # out_filtered_sam = os.path.join(OUTPUT_DIR, name+'_f2_q'+alignment_quality+'.sam')
+    out_filtered_sam = os.path.join(SAM_DIR, name+'_F0x900_F0x04_q'+alignment_quality+'.sam')
+
+    if is_pair_read == 1:
+        bwacmd = 'bwa-meme mem -7 %s %s %s' % (ref,read1,read2)
+    else:
+        bwacmd = 'bwa-meme mem -7 %s %s' % (ref,read)
 
     # 02_alignment
     if os.path.exists(out_sam):
         print('Alignment might have been done already.  Skip bwa.')
     else:
-        cmd = 'bwa mem %s %s %s' % (ref, read1, read2)
+        # cmd = 'bwa-meme mem %s %s %s' % (ref,read1,read2)
+        cmd = bwacmd
         try:
             output = subprocess.check_call(cmd, shell=True, stdout=open(out_sam, 'w'))
+            # output.wait()
         except:
             no_error = False
             log_error(cmd, output, sys.exc_info())
@@ -200,8 +265,10 @@ for line in reads:
     if os.path.exists(out_filtered_sam):
         print('Alignment might have been filtered already.  Skip samtools.')
     else:
-        print("Filter bwa's output")
-        cmd = 'samtools view -f 2 -F 0x900 -q %s %s' % (alignment_quality, out_sam)
+        print("Filter bwa-meme's output")
+        # cmd = 'samtools view -f 2 -q %s %s' % (alignment_quality , out_sam)
+        # cmd = 'samtools view -f 2 -F 0x900 -q %s %s' % (alignment_quality , out_sam)
+        cmd = 'samtools view -h -F 0x900,0x04 -q %s %s' % (alignment_quality , out_sam)
         try:
             ouptut = subprocess.check_call(cmd, shell=True, stdout=open(out_filtered_sam, 'w'))
         except:

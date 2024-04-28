@@ -37,6 +37,8 @@ def process(params):
     alignment_quality = params['alignment_quality']
     score_threshold = params['score_threshold']
     percentage_threshold = params['percentage_threshold']
+    count_threshold = params['count_threshold']
+    d_threshold = params['d_threshold']
 
     # print(ref)
     # print(annotation)
@@ -48,14 +50,14 @@ def process(params):
     # print(alignment_quality)
     # print(score_threshold)
     # print(percentage_threshold)
-
+    SCRIPT_DIR = os.path.dirname(os.path.realpath(sys.argv[0]))+'/'
     # read version
-    with open('VERSION','r') as f:
+    with open(SCRIPT_DIR+'VERSION','r') as f:
         line = f.readline()
         version = float(line.strip())
 
     # #--------------------------------------------------------------
-    SCRIPT_DIR = os.getcwd()
+    # SCRIPT_DIR = os.getcwd()
     print("\nComputing scores")
     # print("Version: "+str(version))
 
@@ -75,16 +77,20 @@ def process(params):
 
     print("Compute heteroplasmy likelihood")
 
-    P = multiprocessing.Pool()
+    # P = multiprocessing.Pool()
+    # 定义最大并发进程数
+    max_processes = 4
+    # 创建进程池和信号量
+    P = multiprocessing.Pool(max_processes)
     jobs = []
     with open(read_file, 'r') as f:
         for line in f:
-            read1 = os.path.join(READS_DIR, line.strip() + '_1.fastq')
-            read2 = os.path.join(READS_DIR, line.strip() + '_2.fastq')
+            read1 = os.path.join(READS_DIR, line.strip() + '_R1.fastq')
+            read2 = os.path.join(READS_DIR, line.strip() + '_R2.fastq')
             name = read1.split('/')[-1].split('_R1')[0]
             # name = line.strip()
-            out_csv = os.path.join(csv_dir, name+'_f2_F0x900_q'+alignment_quality+'.csv')
-            out_filtered_sam = os.path.join(OUTPUT_DIR, name+'_f2_F0x900_q'+alignment_quality+'.sam')
+            out_csv = os.path.join(csv_dir, name+'_F0x900_F0x04_q'+alignment_quality+'.csv')
+            out_filtered_sam = os.path.join(OUTPUT_DIR, name+'_F0x900_F0x04_q'+alignment_quality+'.sam')
             no_error = True
             output = 'None'
 
@@ -101,15 +107,17 @@ def process(params):
     P.join()
 
     # Sort score
-    P = multiprocessing.Pool()
+    # P = multiprocessing.Pool()
+    # 创建进程池和信号量
+    P = multiprocessing.Pool(max_processes)
     jobs = []
     with open(read_file, 'r') as f:
         for line in f:
-            read1 = os.path.join(READS_DIR, line.strip() + '_1.fastq')
-            read2 = os.path.join(READS_DIR, line.strip() + '_2.fastq')
+            read1 = os.path.join(READS_DIR, line.strip() + '_R1.fastq')
+            read2 = os.path.join(READS_DIR, line.strip() + '_R2.fastq')
             name = read1.split('/')[-1].split('_R1')[0]
             # name = line.strip()
-            out_csv = os.path.join(csv_dir, name+'_f2_F0x900_q'+alignment_quality+'.csv')
+            out_csv = os.path.join(csv_dir, name+'_F0x900_F0x04_q'+alignment_quality+'.csv')
             
             kw2 = {
                 'out_csv': out_csv
@@ -140,6 +148,8 @@ def process(params):
         'csv_dir' : csv_dir,
         'score_threshold': score_threshold,
         'percentage_threshold': percentage_threshold,
+        'count_threshold': count_threshold,
+        'd_threshold': d_threshold,
         'name_list' : None,
         'organellar_type': organellar_type,
         'result_dir': result_dir
@@ -177,9 +187,9 @@ def process(params):
 
     # genome_name = '"Daucus carota chloroplast genome"'
     if organellar_type == 'chloroplast':
-        genome_name = '"Daucus carota chloroplast genome"'
+        genome_name = '"chloroplast genome"'
     if organellar_type == 'mitochondria':
-        genome_name = '"Daucus carota mitochondrial genome"'
+        genome_name = '"mitochondrial genome"'
 
     out_html = os.path.join(OUTPUT_DIR, out_html_name)
     cmd = 'python %s %s %s %s %s %s' %(plot_heteroplasmy, genome_name, annotation, het_file, cp_conserved, out_html)
@@ -196,8 +206,8 @@ def process(params):
     print("Vizualization file : ", out_html)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 13:
-        print('Usage: python', sys.argv[0], 'ref', 'annotation', 'dist', 'read_file', 'output.html', 'random_id', 'READS_DIR', 'output_dir', 'log_file', 'alignment_quality', 'score_threshold', 'percentage_threshold')
+    if len(sys.argv) != 15:
+        print('Usage: python', sys.argv[0], 'ref', 'annotation', 'dist', 'read_file', 'output.html', 'random_id', 'READS_DIR', 'output_dir', 'log_file', 'alignment_quality', 'score_threshold', 'percentage_threshold', 'count_threshold', 'd_threshold')
         sys.exit(0)
 
     params = {
@@ -213,6 +223,8 @@ if __name__ == '__main__':
         'alignment_quality': sys.argv[10],
         'score_threshold': sys.argv[11],
         'percentage_threshold': sys.argv[12],
+        'count_threshold': sys.argv[13],
+        'd_threshold': sys.argv[14]
     }
 
     process(params)

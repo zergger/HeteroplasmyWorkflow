@@ -211,7 +211,8 @@ def plot_heteroplasmies():
 	plasmy_df['alpha'] = [ plasmy_alpha(r[1]) for r in plasmy_df.iterrows() ]
 	plasmy_df['alpha_original'] = [ plasmy_alpha(r[1]) for r in plasmy_df.iterrows() ]
 		
-	plasmy_source = ColumnDataSource(data = plasmy_df)
+	# plasmy_source = ColumnDataSource(data = plasmy_df)
+	plasmy_source = ColumnDataSource(data=plasmy_df.to_dict('list'))
 	if plasmy_df.max()['Coordinate'] > MAX_X:
 		MAX_X = plasmy_df.max()['Coordinate']
 
@@ -264,7 +265,8 @@ def plot_heteroplasmies():
 """ % y_ticks_labels )
 
 	# plasmy_df = plasmy_df[plasmy_df['alpha'] == 1]
-	plasmy_source = ColumnDataSource(data = plasmy_df)
+	# plasmy_source = ColumnDataSource(data = plasmy_df)
+	plasmy_source = ColumnDataSource(data=plasmy_df.to_dict('list'))
 
 	# fig.min_border = 0
 	fig.outline_line_width = 1
@@ -686,8 +688,8 @@ def build_coverage_filter(plasmy_source):
 	def roundup(x):
 		return int(math.ceil(x / 100.0)) * 100
 
-	max_coverage = plasmy_source.data['total'].max()
-	
+	# max_coverage = plasmy_source.data['total'].max()
+	max_coverage = max(plasmy_source.data['total'])
 	def slider_callback(source=plasmy_source, window=None):
 		data = source.data
 		slider_value = cb_obj.value

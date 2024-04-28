@@ -34,11 +34,11 @@ def get_csvfiles_by_nameList(dir, namelist):
 def get_individual_id(csvfile):
 	filename = csvfile.split('/')[-1]
 	prefix = filename.split('.')[0]
-	name = prefix.split('_')[0]
+	name = prefix.split('_')[0]+"_"+prefix.split('_')[1]
 	return name
 
 #------------------------------------------------------------------------------
-def filter_csvfile(csvfile, score_threshold, percentage_threshold):
+def filter_csvfile(csvfile, score_threshold, percentage_threshold, count_threshold):
 	# print("Processing", csvfile)
 	high_score = []
 	with open(csvfile) as f:
@@ -55,17 +55,17 @@ def filter_csvfile(csvfile, score_threshold, percentage_threshold):
 				# print("%d\t%.4f\t%.1f\t%.1f\t%.1f\t%.1f\t%.1f\t%.4f\t%.4f\t%.4f\t%.4f" % (pos, score, a,c,g,t,total,percentages[0],percentages[1],percentages[2],percentages[3]))
 			else:
 				break
-	selected = [ x for x in high_score if x[2] >= percentage_threshold ]
+	selected = [ x for x in high_score if x[2] >= percentage_threshold and x[16] >= count_threshold ]
 	# ret_val = { s[0] : person_id for s in selected }, { s[0] : s for s in selected }
 	return { s[0] : s for s in selected }
 
 #------------------------------------------------------------------------------
-def intersect(csvfiles, score_threshold, percentage_threshold, output_file):
+def intersect(csvfiles, score_threshold, percentage_threshold, count_threshold, d_threshold, output_file):
 	files = {}
 	positions = {}
 	for f in csvfiles:
 		person_id = get_individual_id(f)
-		pos = filter_csvfile(f, score_threshold, percentage_threshold)
+		pos = filter_csvfile(f, score_threshold, percentage_threshold, count_threshold)
 		for p,profile in pos.items():
 			if p not in positions:
 				positions[p] = ([], [])
@@ -74,14 +74,14 @@ def intersect(csvfiles, score_threshold, percentage_threshold, output_file):
 
 	# for k,v in positions.items():
 	# 	print(k,v)
-	scatter_plot([get_individual_id(f) for f in csvfiles], positions, output_file)
+	scatter_plot([get_individual_id(f) for f in csvfiles], positions, output_file, d_threshold)
 
 #------------------------------------------------------------------------------
-def scatter_plot(ids, positions, output_file):
+def scatter_plot(ids, positions, output_file, d_threshold):
 	points = []
 	with open(output_file, 'w') as f:
 		# print('Coordinate,Sample,Name,GP,A,C,G,T,D,I,CountA,CountC,CountG,CountT,CountD,CountI,total,d')
-		f.write('Coordinate,Sample,Name,GP,A,C,G,T,D,I,CountA,CountC,CountG,CountT,CountD,CountI,total,d\n')
+		f.write('Coordinate,Sample,Name,GP,A,C,G,T,D,I,CountA,CountC,CountG,CountT,CountD,CountI,total,Score,d\n')
 
 		for i,cur_id in enumerate(ids):
 			items = []
@@ -92,7 +92,7 @@ def scatter_plot(ids, positions, output_file):
 					# print('%d,%d,%s' % (pos,i+1,cur_id))
 					# print(item)
 					# print(profile)
-					items.append([pos,i+1,cur_id,item[3],item[4],item[5],item[6],item[7],item[8],item[9],item[10],item[11],item[12], item[13], item[14], item[15],item[16],0])
+					items.append([pos,i+1,cur_id,item[3],item[4],item[5],item[6],item[7],item[8],item[9],item[10],item[11],item[12], item[13], item[14], item[15],item[16],item[1],0])
 
 			# Compute the distance to the nearest neighbors
 			items.sort()
@@ -105,8 +105,12 @@ def scatter_plot(ids, positions, output_file):
 			# for x in items:
 			# 	print('%d,%d,%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%d,%d,%d' % tuple(x))
 
-			for x in items:
-				f.write('%d,%d,%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%d,%d,%d\n' % tuple(x))
+			# for x in items:
+				# f.write('%d,%d,%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%d,%d,%d\n' % tuple(x))
+
+			selected = [ x for x in items if x[-1] >= d_threshold ]
+			for x in selected:
+				f.write('%d,%d,%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%d,%d,%.4f,%d\n' % tuple(x))
 
 	print("Finish selecting sites.\n")
 
@@ -114,6 +118,8 @@ def process(params):
 	csv_dir = params['csv_dir']
 	score_threshold = int(params['score_threshold'])
 	percentage_threshold = float(params['percentage_threshold'])
+	count_threshold = float(params['count_threshold'])
+	d_threshold = float(params['d_threshold'])
 	name_list = params['name_list']
 	organellar_type = params['organellar_type']
 	result_dir = params['result_dir']
@@ -128,7 +134,7 @@ def process(params):
 
 	output_file = os.path.join(result_dir, organellar_type+"_heteroplasmy.csv")
 
-	intersect(files, score_threshold, percentage_threshold, output_file)
+	intersect(files, score_threshold, percentage_threshold, count_threshold, d_threshold, output_file)
 
 	return output_file
 	
@@ -136,25 +142,27 @@ def process(params):
 #------------------------------------------------------------------------------
 if __name__ == '__main__':
 	# organellar type is either chloroplast or mitochondria
-	if len(sys.argv) != 6 and len(sys.argv) != 7:
-		print("USAGE: ", sys.argv[0], "  csv_dir score_threshold percentage_threshold organellar_type result_dir")
+	if len(sys.argv) != 8 and len(sys.argv) != 9:
+		print("USAGE: ", sys.argv[0], "  csv_dir score_threshold percentage_threshold count_threshold d_threshold organellar_type result_dir")
 		print("or")
-		print("USAGE: ", sys.argv[0], "  csv_dir score_threshold percentage_threshold name_list.csv organellar_type result_dir")
+		print("USAGE: ", sys.argv[0], "  csv_dir score_threshold percentage_threshold count_threshold d_threshold name_list.csv organellar_type result_dir")
 		sys.exit(0)
 
-	if len(sys.argv) == 6:
+	if len(sys.argv) == 8:
 		name_list = None
-		organellar_type = sys.argv[4]
-		result_dir = sys.argv[5]
+		organellar_type = sys.argv[6]
+		result_dir = sys.argv[7]
 	else:
-		name_list = sys.argv[4]
-		organellar_type = sys.argv[5]
-		result_dir = sys.argv[6]
+		name_list = sys.argv[6]
+		organellar_type = sys.argv[7]
+		result_dir = sys.argv[8]
 
 	params = {
 		'csv_dir': sys.argv[1],
 		'score_threshold': int(sys.argv[2]),
 		'percentage_threshold': float(sys.argv[3]),
+		'count_threshold': float(sys.argv[4]),
+		'd_threshold': float(sys.argv[4]),
 		'name_list': name_list,
 		'organellar_type': organellar_type,
 		'result_dir': result_dir

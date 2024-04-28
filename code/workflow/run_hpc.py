@@ -30,14 +30,21 @@ if len(sys.argv) != 3:
     print('Usage: python', sys.argv[0], 'config_file.txt','read_file.txt')
     sys.exit(0)
 
+# print(os.getcwd())
+SCRIPT_DIR = os.path.dirname(os.path.realpath(sys.argv[0]))+'/'
+# print(SCRIPT_DIR)
+# exit()
 #--------------------------------------------------------------
 # read defaults file
 #--------------------------------------------------------------
 config = ConfigParser()
-config.readfp(open('defaults.ini'))
+# config.readfp(open(SCRIPT_DIR+'defaults.ini'))
+config.read_file(open(SCRIPT_DIR+'defaults.ini'))
 default_dist = config.get('defaults', 'DIST')
 default_score_threshold = config.get('defaults', 'score_threshold')
 default_percentage_threshold = config.get('defaults', 'percentage_threshold')
+default_count_threshold = config.get('defaults', 'count_threshold')
+default_d_threshold = config.get('defaults', 'd_threshold')
 default_alignment_quality = config.get('defaults', 'alignment_quality')
 default_chloroplast = config.get('defaults', 'chloroplast')
 default_mitochondria = config.get('defaults', 'mitochondria')
@@ -45,7 +52,7 @@ default_mitochondria = config.get('defaults', 'mitochondria')
 #--------------------------------------------------------------
 # read version
 #--------------------------------------------------------------
-with open('VERSION', 'r') as f:
+with open(SCRIPT_DIR+'VERSION', 'r') as f:
     line = f.readline()
     version = line.strip()
 
@@ -55,10 +62,16 @@ output_day = str(datetime.now()).split(" ")[0].replace(",","")
 # make info for output filename
 output_info = "_v"+version + "_" + output_day
 
+# print("here")
+# print(version)
+# print(default_dist)
+# exit()
+
 #--------------------------------------------------------------
 # read config file
 #--------------------------------------------------------------
-config.readfp(open(sys.argv[1]))
+# config.readfp(open(sys.argv[1]))
+config.read_file(open(sys.argv[1]))
 ref = config.get('config', 'REF')
 READS_DIR = config.get('config', 'READS_DIR')
 OUTPUT_DIR = config.get('config', 'OUTPUT_DIR')
@@ -104,10 +117,23 @@ try:
 except:
     percentage_threshold = default_percentage_threshold
 
-check_exist('ls', cp_ref)
-check_exist('ls', mt_ref)
-check_exist('ls', cp_annotation)
-check_exist('ls', mt_annotation)
+try:
+    count_threshold = config.get('config', 'count_threshold')
+except:
+    count_threshold = default_count_threshold
+
+try:
+    d_threshold = config.get('config', 'd_threshold')
+except:
+    d_threshold = default_d_threshold
+
+if chloroplast != 'None':
+    check_exist('ls', cp_ref)
+    check_exist('ls', cp_annotation)
+
+if mitochondria != 'None':
+    check_exist('ls', mt_ref)
+    check_exist('ls', mt_annotation)
 
 logf = open(LOG_FILE,'w')
 logf.write("icHET\n")
@@ -126,7 +152,7 @@ with open(sys.argv[2], 'r') as f:
 
 n_reads = len(reads)
 
-SCRIPT_DIR = os.getcwd()
+# SCRIPT_DIR = os.getcwd()
 print("icHET: Exploratory Visualization of Cytoplasmic Heteroplasmy")
 
 output = 'None'
@@ -155,15 +181,15 @@ start_time = time.time()
 ###########################################################
 # 01_bwa
 ###########################################################
-check_exist('which', 'bwa')
+check_exist('which', 'bwa-meme')
 check_exist('which', 'samtools')
 # import datetime
 
-if os.path.exists(ref + '.bwt'):
-    print('\nIndex exists. Skip indexing by bwa.')
+if os.path.exists(ref + '.pac'):
+    print('\nIndex exists. Skip indexing by bwa-meme.')
 else:
     print('\nIndex', ref)
-    cmd = 'bwa index %s' % ref
+    cmd = 'bwa-meme_mode2 index -a meme %s -t 8' % ref
     with open(LOG_FILE, 'a') as f:
         f.write('%s\n%s\n' % (str(datetime.now()), cmd))
 
@@ -174,7 +200,25 @@ else:
         log_error(cmd, output, sys.exc_info())
 
 index_time = time.time()
-print("Index time: ", index_time-start_time)
+print("Training time: ", index_time-start_time)
+
+start_time = time.time()
+if os.path.exists(ref + '.suffixarray_uint64_L2_PARAMETERS'):
+    print('\nTrained models exists. Skip models training by bwa-meme.')
+else:
+    print('\nTraining models', ref)
+    cmd = 'build_rmis_dna.sh %s' % ref
+    with open(LOG_FILE, 'a') as f:
+        f.write('%s\n%s\n' % (str(datetime.now()), cmd))
+
+    try:
+        output = subprocess.check_call(cmd, shell=True)
+    except:
+        no_error = False
+        log_error(cmd, output, sys.exc_info())
+
+train_time = time.time()
+print("Training time: ", train_time-start_time)
 
 ###########################################################
 # 02_alignment
@@ -194,7 +238,12 @@ if mitochondria != 'None':
 print("Run hpc_align")
 # hpc_align.main(sys.argv[1], sys.argv[2])
 
-P = multiprocessing.Pool()
+# P = multiprocessing.Pool()
+# 定义最大并发进程数
+max_processes = 4
+# 创建进程池和信号量
+P = multiprocessing.Pool(max_processes)
+
 jobs = []
 for r in reads:
     kw = {'config_file': sys.argv[1], 'read_ID': r}
@@ -205,7 +254,7 @@ P.close()
 P.join()
    
 align_filter_time = time.time()
-print("Alignment and Filtering time:", align_filter_time-index_time)
+print("Alignment and Filtering time:", align_filter_time-train_time)
 
 
 # ###########################################################
@@ -226,7 +275,9 @@ if chloroplast != 'None':
         'log_file': LOG_FILE,
         'alignment_quality': alignment_quality,
         'score_threshold': score_threshold,
-        'percentage_threshold': percentage_threshold
+        'percentage_threshold': percentage_threshold,
+        'count_threshold': count_threshold,
+        'd_threshold': d_threshold
     }
 
     run_hpc_het.process(params)
@@ -252,7 +303,9 @@ if mitochondria != 'None':
         'log_file': LOG_FILE,
         'alignment_quality': alignment_quality,
         'score_threshold': score_threshold,
-        'percentage_threshold': percentage_threshold
+        'percentage_threshold': percentage_threshold,
+        'count_threshold': count_threshold,
+        'd_threshold': d_threshold
     }
 
     run_hpc_het.process(params)

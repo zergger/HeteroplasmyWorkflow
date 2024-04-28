@@ -30,7 +30,8 @@ def filter_reads_for_cp_mt(filtered_sam, SAMdir, chloroplast, mitochondria):
 			mtf =  open(mt_outfile, 'w')
 							
 
-		with open(filtered_sam, "rU") as file:
+		# with open(filtered_sam, "rU") as file:  DeprecationWarning: 'U' mode is deprecated
+		with open(filtered_sam, "r") as file:
 			for line in file:
 				if line[0] != '@':
 					items = line.split('\t')
