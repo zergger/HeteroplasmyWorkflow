@@ -1,3 +1,7 @@
+### Description
+
+This is a modified version of icHET: Interactive Visualization of Cytoplasmic Heteroplasmy
+
 # icHET: Interactive Visualization of Cytoplasmic Heteroplasmy
 
 ## Heteroplasmy Visualization
