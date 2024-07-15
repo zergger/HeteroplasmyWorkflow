@@ -51,6 +51,7 @@ def process(*args, **kwargs):
     ref = config.get('config', 'REF')
     OUTPUT_DIR = config.get('config', 'OUTPUT_DIR')
     is_pair_read = int(config.get('config', 'PE'))
+    rm_alter_align = int(config.get('config', 'rm_alter_align'))
 
     # quality for SAM filter
     try:
@@ -77,29 +78,53 @@ def process(*args, **kwargs):
     check_exist('which', 'bwa-meme')
     check_exist('which', 'samtools')
     check_exist('ls', ref)
-    filter_cp_mt = os.path.join(SCRIPT_DIR, 'filter_samfiles_cp_mt.py')
+
+    if rm_alter_align == 1:
+        filter_cp_mt = os.path.join(SCRIPT_DIR, 'filter_samfiles_rm_numt.py')
+    else:
+        filter_cp_mt = os.path.join(SCRIPT_DIR, 'filter_samfiles_cp_mt.py')
     check_exist('ls', filter_cp_mt)
 
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
     SAM_DIR = os.path.dirname(os.path.realpath(ref))+'/'
+
     start_time = time.time()
+
     # for line in read_file:
     if is_pair_read == 1:
-        read1 = os.path.join(READS_DIR, read_ID + '_R1.fastq')
-        read2 = os.path.join(READS_DIR, read_ID + '_R2.fastq')
-        check_exist('ls', read1)
-        check_exist('ls', read2)
-        name = read1.split('/')[-1].split('_R1')[0]
+        read1 = os.path.join(READS_DIR, read_ID + '_1.fastq.gz')
+        read2 = os.path.join(READS_DIR, read_ID + '_2.fastq.gz')
+        # check_exist('ls', read1)
+        # check_exist('ls', read2)
+        name = read1.split('/')[-1].split('_1')[0]
+        sam_flag = 'f2_F0x900'
     else:
-        read = os.path.join(READS_DIR, read_ID + '.fastq')
-        check_exist('ls', read)
+        read = os.path.join(READS_DIR, read_ID + '.fastq.gz')
+        # check_exist('ls', read)
         name = read.split('/')[-1].split('.')[0]
+        sam_flag = 'F0x904'
 
-    # out_sam = os.path.join(OUTPUT_DIR, name+'.sam')
-    out_sam = os.path.join(SAM_DIR, name+'.sam')
-    # out_filtered_sam = os.path.join(OUTPUT_DIR, name+'_f2_q'+alignment_quality+'.sam')
-    out_filtered_sam = os.path.join(SAM_DIR, name+'_F0x900_F0x04_q'+alignment_quality+'.sam')
+    out_sam = os.path.join(OUTPUT_DIR, name+'.sam')
+    out_filtered_sam = os.path.join(OUTPUT_DIR, name+'_'+sam_flag+'_q'+alignment_quality+'.sam')
+    out_bam = os.path.join(OUTPUT_DIR, name+'.bam')
+    out_markdup = os.path.join(OUTPUT_DIR, name+'.markdup')
+    out_sorted_bam = os.path.join(OUTPUT_DIR, name+'_sorted.bam')
+    out_sorted_bai = os.path.join(OUTPUT_DIR, name+'_sorted.bam.bai')
+    if mitochondria != 'None':
+        mt_out = os.path.join(OUTPUT_DIR,'mitochondria')
+        out_csv_filtered_sam = os.path.join(mt_out, name+'_'+sam_flag+'_q'+alignment_quality+'.sam')
+        out_threshold_file = os.path.join(mt_out, name+'_threshold.txt')
+    if chloroplast != 'None':
+        cp_out = os.path.join(OUTPUT_DIR,'chloroplast')
+        out_csv_filtered_sam = os.path.join(cp_out, name+'_'+sam_flag+'_q'+alignment_quality+'.sam')
+        out_threshold_file = os.path.join(cp_out, name+'_threshold.txt')
+    # out_sam = os.path.join(SAM_DIR, name+'.sam')
+    # out_filtered_sam = os.path.join(SAM_DIR, name+'_f2_F0x900_q'+alignment_quality+'.sam')
+    # out_bam = os.path.join(SAM_DIR, name+'.bam')
+    # out_markdup = os.path.join(SAM_DIR, name+'.markdup')
+    # out_sorted_bam = os.path.join(SAM_DIR, name+'_sorted.bam')
+    # out_threshold_file = os.path.join(SAM_DIR, name+'_threshold.txt')
     output = 'None'
 
     # if '_MT' in name:
@@ -123,7 +148,7 @@ def process(*args, **kwargs):
         # bwacmd = 'bwa-meme mem -7 %s %s' % (ref,out_fastq)
 
     # 01_alignment      
-    if os.path.exists(out_sam):
+    if os.path.exists(out_csv_filtered_sam) or os.path.exists(out_filtered_sam):
         print('Alignment might have been done already.  Skip bwa-meme.')
     else:
         # cmd = 'bwa-meme mem %s %s %s' % (ref,read1,read2)
@@ -135,18 +160,64 @@ def process(*args, **kwargs):
             no_error = False
             log_error(cmd, output, sys.exc_info())
 
+        # Check if the output file exists, and if it does, skip the operation
+        for out_file, cmd in [(out_bam, 'samtools view -@ 2 -hb %s > %s' % (out_sam, out_bam)),
+                              (out_markdup, 'sambamba markdup -t 2 -r -p %s %s' % (out_bam, out_markdup)),
+                              (out_sorted_bam, 'sambamba sort -t 2 -p -o %s %s' % (out_sorted_bam, out_markdup))]:
+            if os.path.exists(out_file):
+                print(f'Skip {out_file}.')
+            else:
+                try:
+                    subprocess.check_call(cmd, shell=True)
+                except subprocess.CalledProcessError as e:
+                    no_error = False
+                    log_error(cmd, e.output, e)
+
     alignment_time = time.time()
     # print("Alignment time for ", line.strip(), ": ", alignment_time-start_time)
     print("Alignment time for ", read_ID, ": ", alignment_time-start_time)
 
-    # 02_filter_by_samtools
-    if os.path.exists(out_filtered_sam):
+    # 02_cal_cov_by_samtools
+    if mitochondria != 'None':
+        if os.path.exists(out_threshold_file):
+            print('Threshold might have been calculated already.  Skip Calculate.')
+        else:
+            print("Calculating percentage threshold")
+            if os.path.exists(out_sorted_bam):
+                # Calculate the average coverage for the nuclear genome and mitogenome.
+                avg_cov_genome = subprocess.check_output(f'samtools depth -a {out_sorted_bam} | grep -v "^{mitochondria}" | awk \'BEGIN {{count=0; sum=0}} {{sum+=$3; count++}} END {{if (count > 0) print sum/count; else print 0}}\'', shell=True)
+                avg_cov_mt = subprocess.check_output(f'samtools depth -a {out_sorted_bam} | grep "^{mitochondria}" | awk \'BEGIN {{count=0; sum=0}} {{sum+=$3; count++}} END {{if (count > 0) print sum/count; else print 0}}\'', shell=True)
+
+                # Convert to float
+                avg_cov_genome = float(avg_cov_genome.strip())
+                avg_cov_mt = float(avg_cov_mt.strip())
+
+                # percentage_threshold = 1 / (float(avg_cov_mt) / float(avg_cov_genome) + 1)
+                if avg_cov_genome != 0 and avg_cov_mt != 0:
+                    percentage_threshold = 1 / (avg_cov_mt / avg_cov_genome + 1)
+                else:
+                    percentage_threshold = 0
+
+                # Write the values to the output file
+                with open(out_threshold_file, 'w') as f:
+                    f.write(f"percentage_threshold: {percentage_threshold}\n")
+                    f.write(f"avg_cov_genome: {avg_cov_genome}\n")
+                    f.write(f"avg_cov_mt: {avg_cov_mt}\n")
+
+                print("Calculate percentage threshold done!")
+
+    # if chloroplast != 'None':
+        # to be continue
+
+    # 03_filter_by_samtools
+    if os.path.exists(out_csv_filtered_sam) or os.path.exists(out_filtered_sam):
         print('Alignment might have been filtered already.  Skip samtools.')
     else:
         print("Filter bwa-meme's output")
-        # cmd = 'samtools view -f 2 -q %s %s' % (alignment_quality , out_sam)
-        # cmd = 'samtools view -f 2 -F 0x900 -q %s %s' % (alignment_quality , out_sam)
-        cmd = 'samtools view -h -F 0x904 -q %s %s' % (alignment_quality , out_sam)
+        if is_pair_read == 1:
+            cmd = 'samtools view -@ 2 -h -f 2 -F 0x900 -q %s %s' % (alignment_quality , out_sorted_bam)
+        else:
+            cmd = 'samtools view -@ 2 -h -F 0x904 -q %s %s' % (alignment_quality , out_sorted_bam)
         try:
             output = subprocess.check_call(cmd, shell=True, stdout=open(out_filtered_sam, 'w'))
             # output.wait()
@@ -154,16 +225,38 @@ def process(*args, **kwargs):
             no_error = False
             log_error(cmd, output, sys.exc_info())
 
-    # select reads that mapped to chloroplast and mitochondria
-    print('Filter alignments for chloroplast and mitochondrial genomes.')
-    # cmd = 'python filter_samfiles_cp_mt.py %s %s %s %s' %(out_filtered_sam, OUTPUT_DIR, chloroplast, mitochondria)
-    cmd = 'python %s %s %s %s %s' %(filter_cp_mt, out_filtered_sam, OUTPUT_DIR, chloroplast, mitochondria)
-    try:
-        output = subprocess.check_call(cmd, shell=True)
-        # output.wait()
-    except:
-        no_error = False
-        log_error(cmd, output, sys.exc_info())            
+    if os.path.exists(out_csv_filtered_sam):
+        print('Filter alignments have been filtered already.  Skip Filter alignments.')
+    else:
+        # select reads that mapped to chloroplast and mitochondria
+        print('Filter alignments for chloroplast and mitochondrial genomes.')
+        # cmd = 'python filter_samfiles_cp_mt.py %s %s %s %s' %(out_filtered_sam, OUTPUT_DIR, chloroplast, mitochondria)
+        cmd = 'python %s %s %s %s %s' %(filter_cp_mt, out_filtered_sam, OUTPUT_DIR, chloroplast, mitochondria)
+        try:
+            output = subprocess.check_call(cmd, shell=True)
+            # output.wait()
+        except:
+            no_error = False
+            log_error(cmd, output, sys.exc_info())
+
+        # rm all other sam files
+        if os.path.exists(out_sorted_bai):
+            try:
+                subprocess.check_call('rm %s && rm %s && rm %s && rm %s && rm %s' % (out_sam, out_bam, out_markdup, out_sorted_bam, out_sorted_bai), shell=True)
+                # subprocess.check_call('rm %s && rm %s && rm %s' % (out_sam, out_bam, out_markdup), shell=True)
+            except subprocess.CalledProcessError as e:
+                no_error = False
+                log_error(cmd, e.output, e)
+
+    # # If 'rm_alter_align' is set to 0, then after deleting `out_csv_filtered_sam`, the filtering process can be repeated.
+    # if rm_alter_align == 1:
+    if os.path.exists(out_csv_filtered_sam):
+        if os.path.exists(out_filtered_sam):
+            try:
+                subprocess.check_call('rm %s' % out_filtered_sam, shell=True)
+            except subprocess.CalledProcessError as e:
+                no_error = False
+                log_error(cmd, e.output, e)
 
     filter_time = time.time()
     # print("Filter time for ", line.strip(), ": ", filter_time-alignment_time)

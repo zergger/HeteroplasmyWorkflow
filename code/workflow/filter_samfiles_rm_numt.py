@@ -36,12 +36,16 @@ def filter_reads_for_cp_mt(filtered_sam, SAMdir, chloroplast, mitochondria):
 						name_parts = ref_name.split("|")
 						for n in name_parts:
 							if chloroplast != 'None' and n in genome_name['chloroplast']:
-								cpf.write(line)
-								break
+								# if 'XA:' not in line and f'XA:Z:{n}' not in line:
+								if 'XA:' not in line:
+									cpf.write(line)
+									break
 
 							if mitochondria != 'None' and n in genome_name['mitochondria']:
-								mtf.write(line)
-								break
+								# if 'XA:' not in line and f'XA:Z:{n}' not in line:
+								if 'XA:' not in line:
+									mtf.write(line)
+									break
 
 		if chloroplast != 'None':
 			cpf.close()

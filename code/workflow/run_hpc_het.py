@@ -39,6 +39,11 @@ def process(params):
     percentage_threshold = params['percentage_threshold']
     count_threshold = params['count_threshold']
     d_threshold = params['d_threshold']
+    is_pair_read = params['is_pair_read']
+    if is_pair_read == 1:
+        sam_flag = 'f2_F0x900'
+    else:
+        sam_flag = 'F0x904'
 
     # print(ref)
     # print(annotation)
@@ -79,18 +84,18 @@ def process(params):
 
     # P = multiprocessing.Pool()
     # 定义最大并发进程数
-    max_processes = 4
+    max_processes = 2
     # 创建进程池和信号量
     P = multiprocessing.Pool(max_processes)
     jobs = []
     with open(read_file, 'r') as f:
         for line in f:
-            read1 = os.path.join(READS_DIR, line.strip() + '_R1.fastq')
-            read2 = os.path.join(READS_DIR, line.strip() + '_R2.fastq')
-            name = read1.split('/')[-1].split('_R1')[0]
+            read1 = os.path.join(READS_DIR, line.strip() + '_1.fastq')
+            # read2 = os.path.join(READS_DIR, line.strip() + '_2.fastq')
+            name = read1.split('/')[-1].split('_1')[0]
             # name = line.strip()
-            out_csv = os.path.join(csv_dir, name+'_F0x900_F0x04_q'+alignment_quality+'.csv')
-            out_filtered_sam = os.path.join(OUTPUT_DIR, name+'_F0x900_F0x04_q'+alignment_quality+'.sam')
+            out_csv = os.path.join(csv_dir, name+'_'+sam_flag+'_q'+alignment_quality+'.csv')
+            out_filtered_sam = os.path.join(OUTPUT_DIR, name+'_'+sam_flag+'_q'+alignment_quality+'.sam')
             no_error = True
             output = 'None'
 
@@ -113,12 +118,11 @@ def process(params):
     jobs = []
     with open(read_file, 'r') as f:
         for line in f:
-            read1 = os.path.join(READS_DIR, line.strip() + '_R1.fastq')
-            read2 = os.path.join(READS_DIR, line.strip() + '_R2.fastq')
-            name = read1.split('/')[-1].split('_R1')[0]
+            read1 = os.path.join(READS_DIR, line.strip() + '_1.fastq')
+            # read2 = os.path.join(READS_DIR, line.strip() + '_2.fastq')
+            name = read1.split('/')[-1].split('_1')[0]
             # name = line.strip()
-            out_csv = os.path.join(csv_dir, name+'_F0x900_F0x04_q'+alignment_quality+'.csv')
-            
+            out_csv = os.path.join(csv_dir, name+'_'+sam_flag+'_q'+alignment_quality+'.csv')
             kw2 = {
                 'out_csv': out_csv
             }
@@ -152,7 +156,8 @@ def process(params):
         'd_threshold': d_threshold,
         'name_list' : None,
         'organellar_type': organellar_type,
-        'result_dir': result_dir
+        'result_dir': result_dir,
+        'output_dir' : OUTPUT_DIR
     }
 
     het_file = s05_select_sites.process(select_sites_inputs)
@@ -207,7 +212,7 @@ def process(params):
 
 if __name__ == '__main__':
     if len(sys.argv) != 15:
-        print('Usage: python', sys.argv[0], 'ref', 'annotation', 'dist', 'read_file', 'output.html', 'random_id', 'READS_DIR', 'output_dir', 'log_file', 'alignment_quality', 'score_threshold', 'percentage_threshold', 'count_threshold', 'd_threshold')
+        print('Usage: python', sys.argv[0], 'ref', 'annotation', 'dist', 'read_file', 'output.html', 'random_id', 'READS_DIR', 'output_dir', 'log_file', 'alignment_quality', 'score_threshold', 'percentage_threshold', 'count_threshold', 'd_threshold', 'is_pair_read')
         sys.exit(0)
 
     params = {
@@ -224,7 +229,8 @@ if __name__ == '__main__':
         'score_threshold': sys.argv[11],
         'percentage_threshold': sys.argv[12],
         'count_threshold': sys.argv[13],
-        'd_threshold': sys.argv[14]
+        'd_threshold': sys.argv[14],
+        'is_pair_read': sys.argv[15]
     }
 
     process(params)

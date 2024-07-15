@@ -149,7 +149,7 @@ def log_likelihood(major_allele, major_f, errors):
 def analyze_positions(profile, ANNOTATION_FILE, out_csv):
 	with open(out_csv, 'w') as f:
 		# print("Pos,Ref,A,C,G,T,D,I,Total,Ea,Ec,Eg,Et,Ed,Ei,Score,GeneProduct")
-		f.write("Pos,Ref,A,C,G,T,D,I,Total,Ea,Ec,Eg,Et,Ed,Ei,Score,GeneProduct\n")
+		f.write("Pos,Ref,A,C,G,T,D,I,Total,Percentage,Ea,Ec,Eg,Et,Ed,Ei,Score,GeneProduct\n")
 		for pos, p in sorted(profile.items()):
 			# biopython is off by one position
 			pos = pos + 1 
@@ -174,10 +174,12 @@ def analyze_positions(profile, ANNOTATION_FILE, out_csv):
 					# print(len(p['err'][base]), end=',')
 					f.write(str(len(p['err'][base])) + ',')
 					
-					
 			# print(count,end=',')
 			f.write(str(count) + ',')
 
+			remaining_sum = 1 - major_f
+			f.write(str(remaining_sum) + ',')
+			
 			for base in ['A','C','G','T','D','I']:
 				if (base not in p['err']) or (p['err'][base]==[]):
 					# print(0, end=',')

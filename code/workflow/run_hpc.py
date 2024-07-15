@@ -80,7 +80,7 @@ cp_ref = config.get('config', 'cp_ref')
 mt_ref = config.get('config', 'mt_ref')
 cp_annotation = config.get('config', 'cp_annotation')
 mt_annotation = config.get('config', 'mt_annotation')
-
+is_pair_read = int(config.get('config', 'PE'))
 
 try:
     chloroplast = config.get('config', 'chloroplast')
@@ -157,25 +157,25 @@ print("icHET: Exploratory Visualization of Cytoplasmic Heteroplasmy")
 
 output = 'None'
 
-###########################################################
-# check if OUTPUT_DIR exists
-###########################################################
-if not os.path.exists(OUTPUT_DIR):
-    os.makedirs(OUTPUT_DIR)
-else:
-    ans = input("\nOutput directory exists!!! Overwrite? (Y to continue, N to exit): ")
-    if ans in ['n','N','No','no']:
-        print("\nOutput exists! Please change the OUTPUT_DIR in config file and re-run the program.\n")
-        exit()
-    else:
-        cmd = 'rm -rf '+OUTPUT_DIR
-        try:
-            output = subprocess.check_call(cmd, shell=True)
-        except:
-            no_error = False
-            log_error(cmd, output, sys.exc_info())
-        os.makedirs(OUTPUT_DIR)
-        print("\nOverwrite OUTPUT_DIR.\n")
+# ###########################################################
+# # check if OUTPUT_DIR exists
+# ###########################################################
+# if not os.path.exists(OUTPUT_DIR):
+    # os.makedirs(OUTPUT_DIR)
+# else:
+    # ans = input("\nOutput directory exists!!! Overwrite? (Y to continue, N to exit): ")
+    # if ans in ['n','N','No','no']:
+        # print("\nOutput exists! Please change the OUTPUT_DIR in config file and re-run the program.\n")
+        # exit()
+    # else:
+        # cmd = 'rm -rf '+OUTPUT_DIR
+        # try:
+            # output = subprocess.check_call(cmd, shell=True)
+        # except:
+            # no_error = False
+            # log_error(cmd, output, sys.exc_info())
+        # os.makedirs(OUTPUT_DIR)
+        # print("\nOverwrite OUTPUT_DIR.\n")
 
 start_time = time.time()
 ###########################################################
@@ -240,7 +240,7 @@ print("Run hpc_align")
 
 # P = multiprocessing.Pool()
 # 定义最大并发进程数
-max_processes = 4
+max_processes = 2
 # 创建进程池和信号量
 P = multiprocessing.Pool(max_processes)
 
@@ -277,7 +277,8 @@ if chloroplast != 'None':
         'score_threshold': score_threshold,
         'percentage_threshold': percentage_threshold,
         'count_threshold': count_threshold,
-        'd_threshold': d_threshold
+        'd_threshold': d_threshold,
+        'is_pair_read': is_pair_read
     }
 
     run_hpc_het.process(params)
@@ -305,7 +306,8 @@ if mitochondria != 'None':
         'score_threshold': score_threshold,
         'percentage_threshold': percentage_threshold,
         'count_threshold': count_threshold,
-        'd_threshold': d_threshold
+        'd_threshold': d_threshold,
+        'is_pair_read': is_pair_read
     }
 
     run_hpc_het.process(params)

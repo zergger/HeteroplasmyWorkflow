@@ -1,0 +1,19 @@
+[config]
+READS_DIR = /home/HP/hg38/fqdata_clean/
+
+REF = /home/HP/hg38/hg38.fasta
+cp_ref = None
+cp_annotation = None
+mt_ref = /home/HP/hg38/MT.fasta
+mt_annotation = /home/HP/hg38/human_annotations.csv
+
+LOG_FILE = /home/HP/hg38/log.txt
+
+OUTPUT_DIR = /home/HP/hg38/eur-output/
+
+mitochondria = MT
+chloroplast = None
+
+PE = 1
+rm_alter_align = 1
+
