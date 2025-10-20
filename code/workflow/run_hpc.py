@@ -46,6 +46,7 @@ default_percentage_threshold = config.get('defaults', 'percentage_threshold')
 default_count_threshold = config.get('defaults', 'count_threshold')
 default_d_threshold = config.get('defaults', 'd_threshold')
 default_alignment_quality = config.get('defaults', 'alignment_quality')
+default_rm_alter_align = config.get('defaults', 'rm_alter_align')
 default_chloroplast = config.get('defaults', 'chloroplast')
 default_mitochondria = config.get('defaults', 'mitochondria')
 
@@ -121,6 +122,11 @@ try:
     count_threshold = config.get('config', 'count_threshold')
 except:
     count_threshold = default_count_threshold
+
+try:
+    rm_alter_align = int(config.get('config', 'rm_alter_align'))
+except:
+    rm_alter_align = int(default_rm_alter_align)
 
 try:
     d_threshold = config.get('config', 'd_threshold')

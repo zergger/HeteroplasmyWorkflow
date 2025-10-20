@@ -40,91 +40,107 @@ def get_individual_id(csvfile):
 	return name
 
 #------------------------------------------------------------------------------
-def filter_csvfile(csvfile, score_threshold, percentage_threshold, count_threshold):
-	# print("Processing", csvfile)
-	high_score = []
+def filter_csvfile(csvfile, q_value_threshold, percentage_threshold, count_threshold_suffix):
+	"""
+	Filters a single CSV file based on q-value, percentage, and a dynamically chosen required coverage column.
+	"""
+	selected_positions = {}
+	# Construct the column name directly from the validated suffix
+	coverage_col = f"N_req_{count_threshold_suffix}"
+	
 	with open(csvfile) as f:
 		reader = csv.DictReader(f)
 		for row in reader:
-			pos, score = int(row['Pos']), float(row['Score'])
-
-			a, c, g, t, d, i, total = float(row['A']), float(row['C']), float(row['G']), float(row['T']), float(row['D']), float(row['I']), float(row['Total'])
-			percentages = sorted([a/total, c/total, g/total, t/total, d/total, i/total])
-			# highest, second_highest = percentages[5], percentages[4]
-			highest = percentages[5]
-			remaining_sum = 1 - highest
-			# remaining_sum = 0
-			# for p in percentages:
-				# if p != highest:
-					# remaining_sum += p
-
-			if score >= score_threshold:
-				high_score.append((pos, score, remaining_sum, row['GeneProduct'], a/total, c/total, g/total, t/total, d/total, i/total, a, c, g, t, d, i, total))
-				# print("%d\t%.4f\t%.1f\t%.1f\t%.1f\t%.1f\t%.1f\t%.4f\t%.4f\t%.4f\t%.4f" % (pos, score, a,c,g,t,total,percentages[0],percentages[1],percentages[2],percentages[3]))
-			else:
-				break
-	selected = [ x for x in high_score if x[2] >= percentage_threshold and x[16] >= count_threshold ]
-	# ret_val = { s[0] : person_id for s in selected }, { s[0] : s for s in selected }
-	return { s[0] : s for s in selected }
+			# Check if all required columns exist and are not empty/NA
+			required_cols = ['Pos', 'Score', 'A', 'C', 'G', 'T', 'D', 'I', 'Total', 
+							 'GeneProduct', 'Score_q_value', 'Percentage',
+							 'N_req_95', 'N_req_99', 'N_req_999']
+			if not all(col in row and row[col] and row[col] != 'NA' for col in required_cols):
+				continue # Skip rows with missing or invalid data
+				
+			# --- DYNAMIC FILTERING LOGIC ---
+			passes_q_value = float(row['Score_q_value']) < q_value_threshold
+			passes_coverage = float(row['Total']) > float(row[coverage_col])
+			passes_percentage = float(row['Percentage']) >= percentage_threshold
+			
+			if passes_q_value and passes_coverage and passes_percentage:
+				pos = int(row['Pos'])
+				total = float(row['Total'])
+				selected_n_req_value = int(float(row[coverage_col]))
+				
+				# Reconstruct the data tuple, now including all three N_req values for output
+				profile_tuple = (
+					pos, float(row['Score']), float(row['Percentage']), row['GeneProduct'],
+					float(row['A'])/total, float(row['C'])/total,
+					float(row['G'])/total, float(row['T'])/total,
+					float(row['D'])/total, float(row['I'])/total,
+					int(float(row['A'])), int(float(row['C'])), int(float(row['G'])), int(float(row['T'])),
+					int(float(row['D'])), int(float(row['I'])), int(total),
+					float(row['Score_q_value']), 
+					selected_n_req_value
+				)
+				selected_positions[pos] = profile_tuple
+				
+	return selected_positions
 
 #------------------------------------------------------------------------------
 def intersect(csvfiles, score_threshold, percentage_threshold, count_threshold, d_threshold, output_file, output_dir, result_dir):
-	# files = {}
+	"""
+	Finds intersecting positions across multiple CSV files.
+	"""
 	positions = {}
+	# --- Validate and sanitize count_threshold ---
+	valid_thresholds = ['95', '99', '999']
+	sanitized_threshold_suffix = str(count_threshold).replace('.0', '')
+	if sanitized_threshold_suffix not in valid_thresholds:
+		print(f"Warning: Invalid count_threshold '{count_threshold}'. Only '95', '99', or '999' are allowed. Defaulting to '95'.")
+		sanitized_threshold_suffix = '95'
+	coverage_logic_str = f"Total > N_req_{sanitized_threshold_suffix}"
+	
 	for f in csvfiles:
 		person_id = get_individual_id(f)
 		out_threshold_file = os.path.join(output_dir, person_id+'_threshold.txt')
+		
+		# Default to the global percentage threshold
+		local_percentage_threshold = percentage_threshold
+		q_value_threshold = score_threshold
+		
 		if os.path.exists(out_threshold_file):
 			# Read the values from the output file
 			with open(out_threshold_file, 'r') as file:
-				# percentage_threshold = float(file.read().strip())
 				lines = file.readlines()
-				percentage_threshold = float(lines[0].split(":")[1].strip())
-				avg_cov_genome = float(lines[1].split(":")[1].strip())
-				percentile_5 = 20 * avg_cov_genome
-				# avg_cov_mt = float(lines[2].split(":")[1].strip())
-				# average_cov = (avg_cov_genome + avg_cov_mt) / 2
-				# # if count_threshold > average_cov:
-				# count_threshold = average_cov
+				# Still allow for a per-sample percentage threshold if provided
+				local_percentage_threshold = float(lines[0].split(":")[1].strip())
 		else:
-			print("out_threshold_file not exists")
+			print(f"Warning: Threshold file not found for {person_id}. Using default percentage threshold.")
 			
-		data = pd.read_csv(f)
-		Q1_score = data['Score'].quantile(0.25)
-		Q3_score = data['Score'].quantile(0.75)
-		IQR_score = Q3_score - Q1_score
-		upper_bound_score = Q3_score + 1.5 * IQR_score
-		# count_threshold = percentile_5
-		# score_threshold = upper_bound_score
-		new_count_threshold = max(percentile_5, count_threshold)
-		new_score_threshold = max(upper_bound_score, score_threshold)
-
-		# print("coun_threshold:", new_count_threshold)
-		# print("score_threshold:", new_score_threshold)
-		# print("percentage_threshold:", percentage_threshold)
+		# Log the thresholds being used for this sample
 		thresholdout_file = os.path.join(result_dir, person_id + '_thresholdout.txt')
 		with open(thresholdout_file, 'w') as file:
-			file.write(f"coun_threshold: {new_count_threshold}\n")
-			file.write(f"score_threshold: {new_score_threshold}\n")
-			file.write(f"percentage_threshold: {percentage_threshold}\n")
+			file.write(f"q_value_threshold: {q_value_threshold}\n")
+			file.write(f"percentage_threshold: {local_percentage_threshold}\n")
+			file.write(f"count_logic: {coverage_logic_str}\n")
 	
-		pos = filter_csvfile(f, new_score_threshold, percentage_threshold, new_count_threshold)
+		pos = filter_csvfile(f, q_value_threshold, local_percentage_threshold, sanitized_threshold_suffix)
 		for p,profile in pos.items():
 			if p not in positions:
 				positions[p] = ([], [])
 			positions[p][0].append(person_id)
 			positions[p][1].append(profile)
 
-	# for k,v in positions.items():
-	# 	print(k,v)
-	scatter_plot([get_individual_id(f) for f in csvfiles], positions, output_file, d_threshold)
+	scatter_plot([get_individual_id(f) for f in csvfiles], positions, output_file, d_threshold, sanitized_threshold_suffix)
 
 #------------------------------------------------------------------------------
-def scatter_plot(ids, positions, output_file, d_threshold):
+def scatter_plot(ids, positions, output_file, d_threshold, threshold_suffix):
+	"""
+	Generates the final output CSV, now including all N_req columns.
+	"""
 	points = []
 	with open(output_file, 'w') as f:
-		# print('Coordinate,Sample,Name,GP,A,C,G,T,D,I,CountA,CountC,CountG,CountT,CountD,CountI,total,d')
-		f.write('Coordinate,Sample,Name,GP,A,C,G,T,D,I,CountA,CountC,CountG,CountT,CountD,CountI,total,Score,Percentage,d\n')
+		n_req_column_name = f"N_req_{threshold_suffix}"
+		header = (f'Coordinate,Sample,Name,GP,A,C,G,T,D,I,CountA,CountC,CountG,CountT,CountD,CountI,Total,'
+				  f'Score,Percentage,Score_q_value,{n_req_column_name},d\n')
+		f.write(header)
 
 		for i,cur_id in enumerate(ids):
 			items = []
@@ -132,10 +148,13 @@ def scatter_plot(ids, positions, output_file, d_threshold):
 				if cur_id in profile[0]:
 					idx = profile[0].index(cur_id)
 					item = profile[1][idx]
-					# print('%d,%d,%s' % (pos,i+1,cur_id))
-					# print(item)
-					# print(profile)
-					items.append([pos,i+1,cur_id,item[3],item[4],item[5],item[6],item[7],item[8],item[9],item[10],item[11],item[12], item[13], item[14], item[15],item[16],item[1],item[2],0])
+					# Unpack the simplified tuple (item[18] is the single N_req value)
+					items.append([
+						pos, i + 1, cur_id, item[3], item[4], item[5], item[6], item[7], 
+						item[8], item[9], item[10], item[11], item[12], item[13], 
+						item[14], item[15], item[16], item[1], item[2], item[17], 
+						item[18], 0  # 0 is placeholder for distance 'd'
+					])
 
 			# Compute the distance to the nearest neighbors
 			items.sort()
@@ -145,22 +164,19 @@ def scatter_plot(ids, positions, output_file, d_threshold):
 					items[j][-1] = min(items[j][0]-items[j-1][0],  items[j+1][0]-items[j][0])
 				items[-1][-1] = items[-1][0] - items[-2][0]
 
-			# for x in items:
-			# 	print('%d,%d,%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%d,%d,%d' % tuple(x))
-
-			# for x in items:
-				# f.write('%d,%d,%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%d,%d,%d\n' % tuple(x))
-
 			selected = [ x for x in items if x[-1] >= d_threshold ]
+			
+			output_format = ('%d,%d,%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%d,%d,'
+							 '%.4f,%.4f,%.4f,%d,%d\n')
 			for x in selected:
-				f.write('%d,%d,%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%d,%d,%.4f,%.4f,%d\n' % tuple(x))
+				f.write(output_format % tuple(x))
 
 	print("Finish selecting sites.\n")
 
 def process(params):
 	print(params)
 	csv_dir = params['csv_dir']
-	score_threshold = int(params['score_threshold'])
+	score_threshold = float(params['score_threshold'])
 	percentage_threshold = float(params['percentage_threshold'])
 	count_threshold = float(params['count_threshold'])
 	d_threshold = float(params['d_threshold'])

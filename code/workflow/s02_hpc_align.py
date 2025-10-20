@@ -40,7 +40,7 @@ def process(*args, **kwargs):
     default_alignment_quality = config.get('defaults', 'alignment_quality')
     default_chloroplast = config.get('defaults', 'chloroplast')
     default_mitochondria = config.get('defaults', 'mitochondria')
-
+    default_rm_alter_align = config.get('defaults', 'rm_alter_align')
     # config.readfp(open(sys.argv[1]))
     # config.readfp(open(config_file))
     config.read_file(open(config_file))
@@ -51,7 +51,11 @@ def process(*args, **kwargs):
     ref = config.get('config', 'REF')
     OUTPUT_DIR = config.get('config', 'OUTPUT_DIR')
     is_pair_read = int(config.get('config', 'PE'))
-    rm_alter_align = int(config.get('config', 'rm_alter_align'))
+
+    try:
+        rm_alter_align = int(config.get('config', 'rm_alter_align'))
+    except:
+        rm_alter_align = int(default_rm_alter_align)
 
     # quality for SAM filter
     try:
