@@ -27,7 +27,12 @@ def filter_reads_for_cp_mt(filtered_sam, SAMdir, chloroplast, mitochondria):
 
 		with open(filtered_sam, "r") as file:
 			for line in file:
-				if line[0] != '@':
+				if line.startswith('@'):
+					if chloroplast != 'None':
+						cpf.write(line)
+					if mitochondria != 'None':
+						mtf.write(line)
+				else:
 					items = line.split('\t')
 					ref_name = items[2]
 					sam_flag, ref_pos, cigar, read, phred = int(items[1]), int(items[3])-1, items[5], items[9], items[10]

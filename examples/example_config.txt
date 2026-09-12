@@ -1,15 +1,23 @@
 [config]
-READS_DIR = /home/user/test_reads/
-
-REF = /home/user/Reference/LNRQ01_1_carrotgenome.fasta
-cp_ref = /home/user/Reference/DCARv2_PT_plastid.fasta
-cp_annotation = /home/user/Annotations/NC_008325.1_chloroplast.csv
-mt_ref = /home/user/Reference/DCARv2_MT_mitochondrial.fasta
-mt_annotation = /home/user/Annotations/NC_017855.1_mitochondria.csv
-
-LOG_FILE = /home/user/test_log.txt
-
-OUTPUT_DIR = /home/user/output_test
-
-mitochondria = LNRQ01000010.1
-chloroplast = LNRQ01000011.1
+# Paths are resolved from the working directory used to launch the workflow.
+READS_DIR = data/reads
+REF = data/reference/combined.fasta
+cp_ref = None
+cp_annotation = None
+mt_ref = data/reference/MT.fasta
+mt_annotation = data/reference/MT_annotations.csv
+LOG_FILE = output/run.log
+OUTPUT_DIR = output
+mitochondria = MT
+chloroplast = None
+PE = 1
+read_type = short
+mm_preset = map-ont
+threads = 2
+max_processes = 2
+rm_alter_align = 1
+alignment_quality = 30
+score_threshold = 0.05
+percentage_threshold = 0.01
+count_threshold = 95
+d_threshold = 0

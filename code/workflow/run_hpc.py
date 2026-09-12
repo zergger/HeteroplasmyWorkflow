@@ -26,6 +26,12 @@ def log_final(no_error, argv):
     with open(log_output, 'a') as f:
         f.write('%s %s %s %s\n' % (no_error, argv[0], argv[1], str(datetime.now())))
 
+def has_mem2_index(prefix):
+    for suffix in ['.0123', '.bwt.2bit.64', '.pac']:
+        if os.path.exists(prefix + suffix):
+            return True
+    return False
+
 if len(sys.argv) != 3:
     print('Usage: python', sys.argv[0], 'config_file.txt','read_file.txt')
     sys.exit(0)
@@ -49,6 +55,9 @@ default_alignment_quality = config.get('defaults', 'alignment_quality')
 default_rm_alter_align = config.get('defaults', 'rm_alter_align')
 default_chloroplast = config.get('defaults', 'chloroplast')
 default_mitochondria = config.get('defaults', 'mitochondria')
+default_read_type = config.get('defaults', 'read_type')
+default_mm_preset = config.get('defaults', 'mm_preset')
+default_max_processes = config.get('defaults', 'max_processes')
 
 #--------------------------------------------------------------
 # read version
@@ -133,6 +142,25 @@ try:
 except:
     d_threshold = default_d_threshold
 
+try:
+    max_processes = int(config.get('config', 'max_processes'))
+except:
+    max_processes = int(default_max_processes)
+
+try:
+    read_type = config.get('config', 'read_type').strip().lower()
+except:
+    read_type = str(default_read_type).strip().lower()
+
+if read_type not in ['short', 'long']:
+    print('Invalid read_type: %s (use short or long)' % read_type)
+    exit()
+
+try:
+    mm_preset = config.get('config', 'mm_preset').strip()
+except:
+    mm_preset = str(default_mm_preset).strip()
+
 if chloroplast != 'None':
     check_exist('ls', cp_ref)
     check_exist('ls', cp_annotation)
@@ -187,41 +215,51 @@ start_time = time.time()
 ###########################################################
 # 01_bwa
 ###########################################################
-check_exist('which', 'bwa-meme')
+if read_type == 'short':
+    check_exist('which', 'bwa-mem2')
+else:
+    check_exist('which', 'minimap2')
 check_exist('which', 'samtools')
 # import datetime
 
-if os.path.exists(ref + '.pac'):
-    print('\nIndex exists. Skip indexing by bwa-meme.')
-else:
-    print('\nIndex', ref)
-    cmd = 'bwa-meme_mode2 index -a meme %s -t 8' % ref
-    with open(LOG_FILE, 'a') as f:
-        f.write('%s\n%s\n' % (str(datetime.now()), cmd))
+if read_type == 'short':
+    if has_mem2_index(ref):
+        print('\nIndex exists. Skip indexing by bwa-mem2.')
+    else:
+        print('\nIndex', ref)
+        cmd = 'bwa-mem2 index %s' % ref
+        with open(LOG_FILE, 'a') as f:
+            f.write('%s\n%s\n' % (str(datetime.now()), cmd))
 
-    try:
-        output = subprocess.check_call(cmd, shell=True)
-    except:
-        no_error = False
-        log_error(cmd, output, sys.exc_info())
+        try:
+            output = subprocess.check_call(cmd, shell=True)
+        except:
+            no_error = False
+            log_error(cmd, output, sys.exc_info())
+else:
+    mm_index = ref + '.mmi'
+    if os.path.exists(mm_index):
+        print('\nIndex exists. Skip indexing by minimap2.')
+    else:
+        print('\nIndex', ref)
+        cmd = 'minimap2 -d %s %s' % (mm_index, ref)
+        with open(LOG_FILE, 'a') as f:
+            f.write('%s\n%s\n' % (str(datetime.now()), cmd))
+
+        try:
+            output = subprocess.check_call(cmd, shell=True)
+        except:
+            no_error = False
+            log_error(cmd, output, sys.exc_info())
 
 index_time = time.time()
 print("Training time: ", index_time-start_time)
 
 start_time = time.time()
-if os.path.exists(ref + '.suffixarray_uint64_L2_PARAMETERS'):
-    print('\nTrained models exists. Skip models training by bwa-meme.')
+if read_type == 'short':
+    print('\nSkip bwa-meme model training for bwa-mem2.')
 else:
-    print('\nTraining models', ref)
-    cmd = 'build_rmis_dna.sh %s' % ref
-    with open(LOG_FILE, 'a') as f:
-        f.write('%s\n%s\n' % (str(datetime.now()), cmd))
-
-    try:
-        output = subprocess.check_call(cmd, shell=True)
-    except:
-        no_error = False
-        log_error(cmd, output, sys.exc_info())
+    print('\nSkip bwa-meme model training for minimap2.')
 
 train_time = time.time()
 print("Training time: ", train_time-start_time)
@@ -246,8 +284,6 @@ print("Run hpc_align")
 
 # P = multiprocessing.Pool()
 # 定义最大并发进程数
-max_processes = 2
-# 创建进程池和信号量
 P = multiprocessing.Pool(max_processes)
 
 jobs = []
@@ -284,7 +320,8 @@ if chloroplast != 'None':
         'percentage_threshold': percentage_threshold,
         'count_threshold': count_threshold,
         'd_threshold': d_threshold,
-        'is_pair_read': is_pair_read
+        'is_pair_read': is_pair_read,
+        'max_processes': max_processes
     }
 
     run_hpc_het.process(params)
@@ -313,10 +350,10 @@ if mitochondria != 'None':
         'percentage_threshold': percentage_threshold,
         'count_threshold': count_threshold,
         'd_threshold': d_threshold,
-        'is_pair_read': is_pair_read
+        'is_pair_read': is_pair_read,
+        'max_processes': max_processes
     }
 
     run_hpc_het.process(params)
 else:
     print("No sequence ID input for mitochondrial genome.")
-

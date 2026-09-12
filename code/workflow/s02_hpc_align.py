@@ -41,6 +41,9 @@ def process(*args, **kwargs):
     default_chloroplast = config.get('defaults', 'chloroplast')
     default_mitochondria = config.get('defaults', 'mitochondria')
     default_rm_alter_align = config.get('defaults', 'rm_alter_align')
+    default_read_type = config.get('defaults', 'read_type')
+    default_mm_preset = config.get('defaults', 'mm_preset')
+    default_threads = config.get('defaults', 'threads')
     # config.readfp(open(sys.argv[1]))
     # config.readfp(open(config_file))
     config.read_file(open(config_file))
@@ -73,13 +76,34 @@ def process(*args, **kwargs):
     except:
         mitochondria = default_mitochondria
 
+    try:
+        read_type = config.get('config', 'read_type').strip().lower()
+    except:
+        read_type = str(default_read_type).strip().lower()
+
+    if read_type not in ['short', 'long']:
+        print('Invalid read_type: %s (use short or long)' % read_type)
+        sys.exit(0)
+
+    try:
+        mm_preset = config.get('config', 'mm_preset').strip()
+    except:
+        mm_preset = str(default_mm_preset).strip()
+    try:
+        threads = int(config.get('config', 'threads'))
+    except:
+        threads = int(default_threads)
+
     #--------------------------------------------------------------
 
     # SCRIPT_DIR = os.getcwd()
     # read_file = open(sys.argv[2])
     # read_file = open(input_read_file)
 
-    check_exist('which', 'bwa-meme')
+    if read_type == 'short':
+        check_exist('which', 'bwa-mem2')
+    else:
+        check_exist('which', 'minimap2')
     check_exist('which', 'samtools')
     check_exist('ls', ref)
 
@@ -96,18 +120,26 @@ def process(*args, **kwargs):
     start_time = time.time()
 
     # for line in read_file:
-    if is_pair_read == 1:
-        read1 = os.path.join(READS_DIR, read_ID + '_1.fastq.gz')
-        read2 = os.path.join(READS_DIR, read_ID + '_2.fastq.gz')
-        # check_exist('ls', read1)
-        # check_exist('ls', read2)
-        name = read1.split('/')[-1].split('_1')[0]
-        sam_flag = 'f2_F0x900'
-    else:
+    if read_type == 'long':
+        if is_pair_read == 1:
+            print('read_type=long ignores PE; using single-end reads.')
         read = os.path.join(READS_DIR, read_ID + '.fastq.gz')
         # check_exist('ls', read)
         name = read.split('/')[-1].split('.')[0]
         sam_flag = 'F0x904'
+    else:
+        if is_pair_read == 1:
+            read1 = os.path.join(READS_DIR, read_ID + '_1.fastq.gz')
+            read2 = os.path.join(READS_DIR, read_ID + '_2.fastq.gz')
+            # check_exist('ls', read1)
+            # check_exist('ls', read2)
+            name = read1.split('/')[-1].split('_1')[0]
+            sam_flag = 'f2_F0x900'
+        else:
+            read = os.path.join(READS_DIR, read_ID + '.fastq.gz')
+            # check_exist('ls', read)
+            name = read.split('/')[-1].split('.')[0]
+            sam_flag = 'F0x904'
 
     out_sam = os.path.join(OUTPUT_DIR, name+'.sam')
     out_filtered_sam = os.path.join(OUTPUT_DIR, name+'_'+sam_flag+'_q'+alignment_quality+'.sam')
@@ -134,10 +166,15 @@ def process(*args, **kwargs):
     # if '_MT' in name:
         # is_pair_read = 1
 
-    if is_pair_read == 1:
-        bwacmd = 'bwa-meme_mode2 mem -7 -t 2 %s %s %s' % (ref,read1,read2)
+    rg_tag = '@RG\tID:%s\tSM:%s' % (read_ID, read_ID)
+
+    if read_type == 'short':
+        if is_pair_read == 1:
+            bwacmd = "bwa-mem2 mem -t %s -R '%s' %s %s %s" % (threads, rg_tag, ref, read1, read2)
+        else:
+            bwacmd = "bwa-mem2 mem -t %s -R '%s' %s %s" % (threads, rg_tag, ref, read)
     else:
-        bwacmd = 'bwa-meme_mode2 mem -7 -t 2 %s %s' % (ref,read)
+        bwacmd = "minimap2 -ax %s -t %s -R '%s' %s %s" % (mm_preset, threads, rg_tag, ref, read)
         # out_fastq = os.path.join(SAM_DIR, name+'.fastq')
         # if os.path.exists(out_fastq):
             # print('cat fastq might have been done already.  Skip cat.')
@@ -153,7 +190,10 @@ def process(*args, **kwargs):
 
     # 01_alignment      
     if os.path.exists(out_csv_filtered_sam) or os.path.exists(out_filtered_sam):
-        print('Alignment might have been done already.  Skip bwa-meme.')
+        if read_type == 'short':
+            print('Alignment might have been done already.  Skip bwa-mem2.')
+        else:
+            print('Alignment might have been done already.  Skip minimap2.')
     else:
         # cmd = 'bwa-meme mem %s %s %s' % (ref,read1,read2)
         cmd = bwacmd
@@ -165,9 +205,9 @@ def process(*args, **kwargs):
             log_error(cmd, output, sys.exc_info())
 
         # Check if the output file exists, and if it does, skip the operation
-        for out_file, cmd in [(out_bam, 'samtools view -@ 2 -hb %s > %s' % (out_sam, out_bam)),
-                              (out_markdup, 'sambamba markdup -t 2 -r -p %s %s' % (out_bam, out_markdup)),
-                              (out_sorted_bam, 'sambamba sort -t 2 -p -o %s %s' % (out_sorted_bam, out_markdup))]:
+        for out_file, cmd in [(out_bam, 'samtools view -@ %s -hb %s > %s' % (threads, out_sam, out_bam)),
+                              (out_markdup, 'sambamba markdup -t %s -r -p %s %s' % (threads, out_bam, out_markdup)),
+                              (out_sorted_bam, 'sambamba sort -t %s -p -o %s %s' % (threads, out_sorted_bam, out_markdup))]:
             if os.path.exists(out_file):
                 print(f'Skip {out_file}.')
             else:
@@ -217,11 +257,11 @@ def process(*args, **kwargs):
     if os.path.exists(out_csv_filtered_sam) or os.path.exists(out_filtered_sam):
         print('Alignment might have been filtered already.  Skip samtools.')
     else:
-        print("Filter bwa-meme's output")
+        print("Filter alignment output")
         if is_pair_read == 1:
-            cmd = 'samtools view -@ 2 -h -f 2 -F 0x900 -q %s %s' % (alignment_quality , out_sorted_bam)
+            cmd = 'samtools view -@ %s -h -f 2 -F 0x900 -q %s %s' % (threads, alignment_quality , out_sorted_bam)
         else:
-            cmd = 'samtools view -@ 2 -h -F 0x904 -q %s %s' % (alignment_quality , out_sorted_bam)
+            cmd = 'samtools view -@ %s -h -F 0x904 -q %s %s' % (threads, alignment_quality , out_sorted_bam)
         try:
             output = subprocess.check_call(cmd, shell=True, stdout=open(out_filtered_sam, 'w'))
             # output.wait()
@@ -246,8 +286,8 @@ def process(*args, **kwargs):
         # rm all other sam files
         if os.path.exists(out_sorted_bai):
             try:
-                subprocess.check_call('rm %s && rm %s && rm %s && rm %s && rm %s' % (out_sam, out_bam, out_markdup, out_sorted_bam, out_sorted_bai), shell=True)
-                # subprocess.check_call('rm %s && rm %s && rm %s' % (out_sam, out_bam, out_markdup), shell=True)
+                # subprocess.check_call('rm %s && rm %s && rm %s && rm %s && rm %s' % (out_sam, out_bam, out_markdup, out_sorted_bam, out_sorted_bai), shell=True)
+                subprocess.check_call('rm %s && rm %s && rm %s' % (out_sam, out_bam, out_markdup), shell=True)
             except subprocess.CalledProcessError as e:
                 no_error = False
                 log_error(cmd, e.output, e)

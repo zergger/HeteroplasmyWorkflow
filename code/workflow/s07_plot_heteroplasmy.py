@@ -202,14 +202,20 @@ def plot_heteroplasmies():
 	except (FileNotFoundError, pandas.errors.EmptyDataError):
 		return None, None # Return None if file not found or is empty
 
+	# ensure numeric Coordinate
+	if 'Coordinate' in plasmy_df.columns:
+		plasmy_df['Coordinate'] = pandas.to_numeric(plasmy_df['Coordinate'], errors='coerce')
+		plasmy_df = plasmy_df.dropna(subset=['Coordinate'])
+
 	plasmy_df['color'] = [ plasmy_color(r[1]) for r in plasmy_df.iterrows() ]
 	plasmy_df['alpha'] = [ plasmy_alpha(r[1]) for r in plasmy_df.iterrows() ]
 	plasmy_df['alpha_original'] = plasmy_df['alpha'].copy()
 		
 	plasmy_source = ColumnDataSource(data=plasmy_df.to_dict('list'))
 	if not plasmy_df.empty:
-		if plasmy_df.max()['Coordinate'] > MAX_X:
-			MAX_X = plasmy_df.max()['Coordinate']
+		coord_max = pandas.to_numeric(plasmy_df['Coordinate'], errors='coerce').max()
+		if coord_max > MAX_X:
+			MAX_X = coord_max
 
 		if VISIBLE_SAMPLE_RANGE[1] > plasmy_df['Sample'].max() + 1:
 			VISIBLE_SAMPLE_RANGE = (VISIBLE_SAMPLE_RANGE[0] , plasmy_df['Sample'].max() + 1)

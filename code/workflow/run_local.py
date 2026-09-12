@@ -23,6 +23,12 @@ def log_final(no_error, argv):
     with open(log_output, 'a') as f:
         f.write('%s %s %s %s\n' % (no_error, argv[0], argv[1], str(datetime.datetime.now())))
 
+def has_mem2_index(prefix):
+    for suffix in ['.0123', '.bwt.2bit.64', '.pac']:
+        if os.path.exists(prefix + suffix):
+            return True
+    return False
+
 if len(sys.argv) != 3:
     print('Usage: python', sys.argv[0], 'config_file.txt','read_file.txt')
     sys.exit(0)
@@ -45,6 +51,9 @@ default_d_threshold = config.get('defaults', 'd_threshold')
 default_alignment_quality = config.get('defaults', 'alignment_quality')
 default_chloroplast = config.get('defaults', 'chloroplast')
 default_mitochondria = config.get('defaults', 'mitochondria')
+default_read_type = config.get('defaults', 'read_type')
+default_mm_preset = config.get('defaults', 'mm_preset')
+default_threads = config.get('defaults', 'threads')
 
 #--------------------------------------------------------------
 # read version
@@ -126,6 +135,24 @@ try:
 except:
     d_threshold = default_d_threshold
 
+try:
+    read_type = config.get('config', 'read_type').strip().lower()
+except:
+    read_type = str(default_read_type).strip().lower()
+
+if read_type not in ['short', 'long']:
+    print('Invalid read_type: %s (use short or long)' % read_type)
+    exit()
+
+try:
+    mm_preset = config.get('config', 'mm_preset').strip()
+except:
+    mm_preset = str(default_mm_preset).strip()
+try:
+    threads = int(config.get('config', 'threads'))
+except:
+    threads = int(default_threads)
+
 if chloroplast != 'None':
     check_exist('ls', cp_ref)
     check_exist('ls', cp_annotation)
@@ -179,41 +206,51 @@ start_time = time.time()
 ###########################################################
 # 01_bwa
 ###########################################################
-check_exist('which', 'bwa-meme')
+if read_type == 'short':
+    check_exist('which', 'bwa-mem2')
+else:
+    check_exist('which', 'minimap2')
 check_exist('which', 'samtools')
 # import datetime
 
-if os.path.exists(ref + '.pac'):
-    print('\nIndex exists. Skip indexing by bwa-meme.')
-else:
-    print('\nIndex', ref)
-    cmd = 'bwa-meme index -a meme %s' % ref
-    with open(LOG_FILE, 'a') as f:
-        f.write('%s\n%s\n' % (str(datetime.now()), cmd))
+if read_type == 'short':
+    if has_mem2_index(ref):
+        print('\nIndex exists. Skip indexing by bwa-mem2.')
+    else:
+        print('\nIndex', ref)
+        cmd = 'bwa-mem2 index %s' % ref
+        with open(LOG_FILE, 'a') as f:
+            f.write('%s\n%s\n' % (str(datetime.now()), cmd))
 
-    try:
-        output = subprocess.check_call(cmd, shell=True)
-    except:
-        no_error = False
-        log_error(cmd, output, sys.exc_info())
+        try:
+            output = subprocess.check_call(cmd, shell=True)
+        except:
+            no_error = False
+            log_error(cmd, output, sys.exc_info())
+else:
+    mm_index = ref + '.mmi'
+    if os.path.exists(mm_index):
+        print('\nIndex exists. Skip indexing by minimap2.')
+    else:
+        print('\nIndex', ref)
+        cmd = 'minimap2 -d %s %s' % (mm_index, ref)
+        with open(LOG_FILE, 'a') as f:
+            f.write('%s\n%s\n' % (str(datetime.now()), cmd))
+
+        try:
+            output = subprocess.check_call(cmd, shell=True)
+        except:
+            no_error = False
+            log_error(cmd, output, sys.exc_info())
 
 index_time = time.time()
 print("Training time: ", index_time-start_time)
 
 start_time = time.time()
-if os.path.exists(ref + '.suffixarray_uint64_L0_PARAMETERS'):
-    print('\nTrained models exists. Skip models training by bwa-meme.')
+if read_type == 'short':
+    print('\nSkip bwa-meme model training for bwa-mem2.')
 else:
-    print('\nTraining models', ref)
-    cmd = 'build_rmis_dna.sh %s' % ref
-    with open(LOG_FILE, 'a') as f:
-        f.write('%s\n%s\n' % (str(datetime.now()), cmd))
-
-    try:
-        output = subprocess.check_call(cmd, shell=True)
-    except:
-        no_error = False
-        log_error(cmd, output, sys.exc_info())
+    print('\nSkip bwa-meme model training for minimap2.')
 
 train_time = time.time()
 print("Training time: ", train_time-start_time)
@@ -223,30 +260,45 @@ print("Training time: ", train_time-start_time)
 # 02_filter_by_samtools
 ###########################################################
 for line in reads:
-    if is_pair_read == 1:
-        read1 = os.path.join(READS_DIR, line.strip() + '_R1.fastq')
-        read2 = os.path.join(READS_DIR, line.strip() + '_R2.fastq')
-        check_exist('ls', read1)
-        check_exist('ls', read2)
-        name = read1.split('/')[-1].split('_R1')[0]
-    else:
+    if read_type == 'long':
+        if is_pair_read == 1:
+            print('read_type=long ignores PE; using single-end reads.')
         read = os.path.join(READS_DIR, line.strip() + '.fastq')
         check_exist('ls', read)
         name = read.split('/')[-1].split('.')[0]
+    else:
+        if is_pair_read == 1:
+            read1 = os.path.join(READS_DIR, line.strip() + '_R1.fastq')
+            read2 = os.path.join(READS_DIR, line.strip() + '_R2.fastq')
+            check_exist('ls', read1)
+            check_exist('ls', read2)
+            name = read1.split('/')[-1].split('_R1')[0]
+        else:
+            read = os.path.join(READS_DIR, line.strip() + '.fastq')
+            check_exist('ls', read)
+            name = read.split('/')[-1].split('.')[0]
 
     # out_sam = os.path.join(OUTPUT_DIR, name+'.sam')
     out_sam = os.path.join(SAM_DIR, name+'.sam')
     # out_filtered_sam = os.path.join(OUTPUT_DIR, name+'_f2_q'+alignment_quality+'.sam')
     out_filtered_sam = os.path.join(SAM_DIR, name+'_F0x900_F0x04_q'+alignment_quality+'.sam')
 
-    if is_pair_read == 1:
-        bwacmd = 'bwa-meme mem -7 %s %s %s' % (ref,read1,read2)
+    rg_tag = '@RG\tID:%s\tSM:%s' % (line.strip(), line.strip())
+
+    if read_type == 'short':
+        if is_pair_read == 1:
+            bwacmd = "bwa-mem2 mem -t %s -R '%s' %s %s %s" % (threads, rg_tag, ref, read1, read2)
+        else:
+            bwacmd = "bwa-mem2 mem -t %s -R '%s' %s %s" % (threads, rg_tag, ref, read)
     else:
-        bwacmd = 'bwa-meme mem -7 %s %s' % (ref,read)
+        bwacmd = "minimap2 -ax %s -t %s -R '%s' %s %s" % (mm_preset, threads, rg_tag, ref, read)
 
     # 02_alignment
     if os.path.exists(out_sam):
-        print('Alignment might have been done already.  Skip bwa.')
+        if read_type == 'short':
+            print('Alignment might have been done already.  Skip bwa-mem2.')
+        else:
+            print('Alignment might have been done already.  Skip minimap2.')
     else:
         # cmd = 'bwa-meme mem %s %s %s' % (ref,read1,read2)
         cmd = bwacmd
@@ -265,10 +317,10 @@ for line in reads:
     if os.path.exists(out_filtered_sam):
         print('Alignment might have been filtered already.  Skip samtools.')
     else:
-        print("Filter bwa-meme's output")
+        print("Filter alignment output")
         # cmd = 'samtools view -f 2 -q %s %s' % (alignment_quality , out_sam)
         # cmd = 'samtools view -f 2 -F 0x900 -q %s %s' % (alignment_quality , out_sam)
-        cmd = 'samtools view -h -F 0x900,0x04 -q %s %s' % (alignment_quality , out_sam)
+        cmd = 'samtools view -@ %s -h -F 0x900,0x04 -q %s %s' % (threads, alignment_quality , out_sam)
         try:
             ouptut = subprocess.check_call(cmd, shell=True, stdout=open(out_filtered_sam, 'w'))
         except:
@@ -345,4 +397,3 @@ if mitochondria != 'None':
         log_error(cmd, output, sys.exc_info())
 else:
     print("No sequence ID input for mitochondrial genome.")
-

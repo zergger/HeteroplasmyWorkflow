@@ -1,0 +1,13 @@
+name: ichet-1.0
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.8
+  - pip
+  - bwa-mem2=2.2.1
+  - samtools
+  - sambamba
+  - minimap2
+  - pip:
+      - -r requirements.txt

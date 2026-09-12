@@ -40,6 +40,10 @@ def process(params):
     count_threshold = params['count_threshold']
     d_threshold = params['d_threshold']
     is_pair_read = params['is_pair_read']
+    try:
+        max_processes = int(params.get('max_processes', 2))
+    except:
+        max_processes = 2
     if is_pair_read == 1:
         sam_flag = 'f2_F0x900'
     else:
@@ -83,8 +87,6 @@ def process(params):
     print("Compute heteroplasmy likelihood")
 
     # P = multiprocessing.Pool()
-    # 定义最大并发进程数
-    max_processes = 2
     # 创建进程池和信号量
     P = multiprocessing.Pool(max_processes)
     jobs = []
@@ -95,6 +97,7 @@ def process(params):
             name = read1.split('/')[-1].split('_1')[0]
             # name = line.strip()
             out_csv = os.path.join(csv_dir, name+'_'+sam_flag+'_q'+alignment_quality+'.csv')
+            out_links = os.path.join(csv_dir, name+'_'+sam_flag+'_q'+alignment_quality+'_links.csv')
             out_filtered_sam = os.path.join(OUTPUT_DIR, name+'_'+sam_flag+'_q'+alignment_quality+'.sam')
             no_error = True
             output = 'None'
@@ -104,6 +107,7 @@ def process(params):
                 'out_filtered_sam': out_filtered_sam,
                 'annotation': annotation,
                 'out_csv': out_csv,
+                'out_links': out_links,
             }
 
             jobs.append(P.apply_async(s03_heteroplasmy_likelihood.process, (), kw))

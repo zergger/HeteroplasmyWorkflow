@@ -1,13 +1,12 @@
 [config]
-READS_DIR = /home/jmandel/programs/sra_toolkit/
-REF = /home/dpham2/carrot/Reference/LNRQ01_1_carrotgenome.fasta
-cp_ref = /home/dpham2/carrot/Reference/DCARv2_PT_plastid.fasta
-cp_annotation = /home/dpham2/carrot/Annotations/NC_008325.1_chloroplast.csv
-mt_ref = /home/dpham2/carrot/Reference/DCARv2_MT_mitochondrial.fasta
-mt_annotation = /home/dpham2/carrot/Annotations/NC_017855.1_mitochondria.csv
-LOG_FILE = /home/dpham2/carrot/log_run_hpc_mt_genomes.txt
-OUTPUT_DIR = /home/dpham2/carrot/OUTPUT/Allgenomes_removeRice
+# Historical carrot example: supply these inputs and run from the repository root.
+READS_DIR = data/reads
+REF = data/reference/combined.fasta
+cp_ref = data/reference/chloroplast.fasta
+cp_annotation = data/reference/chloroplast_annotations.csv
+mt_ref = data/reference/mitochondria.fasta
+mt_annotation = data/reference/mitochondria_annotations.csv
+LOG_FILE = output/run.log
+OUTPUT_DIR = output
 mitochondria = LNRQ01000010.1
 chloroplast = LNRQ01000011.1
-
-
